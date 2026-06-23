@@ -1,0 +1,87 @@
+[
+  {
+    "idx": 1,
+    "speaker": "maya",
+    "audio_file": "audio/u01_maya.wav"
+  },
+  {
+    "idx": 2,
+    "speaker": "raj",
+    "audio_file": "audio/u02_raj.wav"
+  },
+  {
+    "idx": 3,
+    "speaker": "lena",
+    "audio_file": "audio/u03_lena.wav"
+  },
+  {
+    "idx": 4,
+    "speaker": "tomas",
+    "audio_file": "audio/u04_tomas.wav"
+  },
+  {
+    "idx": 5,
+    "speaker": "raj",
+    "audio_file": "audio/u05_raj.wav"
+  },
+  {
+    "idx": 6,
+    "speaker": "maya",
+    "audio_file": "audio/u06_maya.wav"
+  },
+  {
+    "idx": 7,
+    "speaker": "lena",
+    "audio_file": "audio/u07_lena.wav"
+  },
+  {
+    "idx": 8,
+    "speaker": "lena",
+    "audio_file": "audio/u08_lena.wav"
+  },
+  {
+    "idx": 9,
+    "speaker": "lena",
+    "audio_file": "audio/u09_lena.wav"
+  },
+  {
+    "idx": 10,
+    "speaker": "raj",
+    "audio_file": "audio/u10_raj.wav"
+  },
+  {
+    "idx": 11,
+    "speaker": "lena",
+    "audio_file": "audio/u11_lena.wav"
+  },
+  {
+    "idx": 12,
+    "speaker": "tomas",
+    "audio_file": "audio/u12_tomas.wav"
+  },
+  {
+    "idx": 13,
+    "speaker": "lena",
+    "audio_file": "audio/u13_lena.wav"
+  },
+  {
+    "idx": 14,
+    "speaker": "raj",
+    "audio_file": "audio/u14_raj.wav"
+  },
+  {
+    "idx": 15,
+    "speaker": "raj",
+    "audio_file": "audio/u15_raj.wav"
+  },
+  {
+    "idx": 16,
+    "speaker": "maya",
+    "audio_file": "audio/u16_maya.wav"
+  },
+  {
+    "idx": 17,
+    "speaker": "maya",
+    "audio_file": "audio/u17_maya.wav"
+  }
+]
