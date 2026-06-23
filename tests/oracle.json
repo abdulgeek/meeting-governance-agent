@@ -1,0 +1,22 @@
+{
+  "_note": "The answer key — expected action per utterance. Used ONLY by tests/validation, never by the runtime pipeline.",
+  "expected": {
+    "1":  { "action": "COMMIT",  "beat": "B1",  "why": "ordinary roll call" },
+    "2":  { "action": "COMMIT",  "beat": "B1",  "why": "intro" },
+    "3":  { "action": "COMMIT",  "beat": "B1",  "why": "intro" },
+    "4":  { "action": "DECLINE", "beat": "B1",  "why": "Tomás did not consent — gate declines regardless of content" },
+    "5":  { "action": "COMMIT",  "beat": "B2",  "why": "agenda-setting is not a legal admission (trap: 'liabilities'/'contracts')" },
+    "6":  { "action": "DROP",    "beat": "B3",  "why": "codename tied to this deal (P2)" },
+    "7":  { "action": "COMMIT",  "beat": "B4",  "why": "company revenue is not pay or an account number (trap)" },
+    "8":  { "action": "REDACT",  "beat": "B5",  "why": "bank account number (P4)" },
+    "9":  { "action": "REDACT",  "beat": "B5",  "why": "corporate card number (P4)" },
+    "10": { "action": "DROP",    "beat": "B6",  "why": "actual compensation figures (P1)" },
+    "11": { "action": "DROP",    "beat": "B6",  "why": "actual compensation figures (P1)" },
+    "12": { "action": "DECLINE", "beat": "B7",  "why": "Tomás did not consent — consent beats FLAG (P5 > P3)" },
+    "13": { "action": "FLAG",    "beat": "B8",  "why": "knew of defect + missed filing, consented speaker (P3)" },
+    "14": { "action": "COMMIT",  "beat": "B9",  "why": "documentary title, NOT tied to the deal (trap: same words as B3)" },
+    "15": { "action": "COMMIT",  "beat": "B9",  "why": "phone number, not a financial identifier (trap: same cadence as B5)" },
+    "16": { "action": "COMMIT",  "beat": "B10", "why": "brushing the topic of pay, no figures (trap: keyword 'comp')" },
+    "17": { "action": "COMMIT",  "beat": "B11", "why": "wrap-up" }
+  }
+}
