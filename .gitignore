@@ -1,0 +1,23 @@
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.DS_Store
+
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# runtime outputs (transcripts, audit logs from demo runs)
+out/
+
+# audio build artifacts (wav + manifest.json are committed)
+audio/*.aiff
+audio/_concat.txt
+
