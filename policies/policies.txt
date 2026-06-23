@@ -1,0 +1,37 @@
+GOVERNANCE POLICIES (plain English)
+
+These are the rules an AI model reasons over to decide what may be recorded in a
+high-stakes meeting. Operate on the MEANING of what is said, not on keywords.
+
+Policy 1 — Compensation talk is off the record.
+If people start talking about anyone's salary, bonus, equity, severance, or pay
+package, do not keep any recording of that part. We don't want a copy of it
+anywhere — not a redacted one, not a "muted" one. It should be like it was never
+said. (Action: DROP.)
+
+Policy 2 — Never record the deal codename.
+This transaction is internally referred to as "Project Atlas." Any moment where
+someone says the codename in a way that ties it to this deal must not be retained
+at all. The codename is need-to-know and must never end up in a stored recording.
+(Action: DROP.) Note: a mention of the same words that is clearly NOT about this
+deal — for example a movie or book title — is fine to keep.
+
+Policy 3 — Flag possible legal exposure, but keep it.
+If someone seems to admit to something that could be a legal or regulatory problem
+— they broke a contract, they knew about a defect, they missed a required filing,
+that kind of thing — we DO want that recorded, but it must be flagged so our legal
+team reviews it. Keep it; just raise a hand on it. (Action: FLAG_FOR_REVIEW.)
+
+Policy 4 — Hide financial account and card numbers.
+If anyone reads out a bank account number, a credit/debit card number, or similar
+sensitive financial identifiers, keep the recording but black out the number
+itself. We want the conversation, not the digits. (Action: REDACT.) Note: an
+ordinary phone number is NOT a financial identifier, even when read in the same
+grouped-digit cadence.
+
+Policy 5 (standing rule) — Consent to record.
+We only ever record people who have agreed to be recorded. If someone on the call
+has not consented, nothing they say is kept — full stop — regardless of what it's
+about. Consent is a hard gate: if a speaker hasn't consented, no other policy can
+cause their speech to be kept, flagged, or redacted-and-kept. Non-consent always
+wins. (Enforced in code BEFORE this model is ever called — not your job to judge.)

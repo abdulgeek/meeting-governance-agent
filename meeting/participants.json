@@ -1,0 +1,6 @@
+{
+  "maya":  { "name": "Maya Okafor",   "role": "Deal lead / Partner",        "side": "Northwind (buyer)", "consent": true },
+  "raj":   { "name": "Raj Patel",     "role": "Diligence analyst",          "side": "Northwind (buyer)", "consent": true },
+  "lena":  { "name": "Dr. Lena Fischer", "role": "CFO",                     "side": "Cendara (target)",  "consent": true },
+  "tomas": { "name": "Tomás Herrera", "role": "Outside counsel for Cendara", "side": "Cendara's law firm", "consent": false }
+}
