@@ -34,7 +34,9 @@ POLICIES = (ROOT / "policies" / "policies.txt").read_text()
 MODEL = os.environ.get("GOV_BEDROCK_MODEL_ID", DEFAULT_MODEL)
 REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or DEFAULT_REGION
 NEST = os.environ.get("NEST_API_URL", "http://localhost:4000")
-CONSENT_PHRASES = ("i consent", "consent", "opt in")
+# A participant opts in by typing a single token (the bot asks them to type "+"). Exact
+# match on the whole (trimmed) message, so normal chatter never trips it.
+OPT_IN = {"+", "yes", "y", "ok", "👍", "1"}
 _VOCAB = "Project Atlas. Northwind Capital. Cendara Robotics."
 _FLUSH_SECS = 4.0
 _MIN_BYTES = 16000  # ~0.5s at 16 kHz/16-bit
@@ -123,10 +125,10 @@ async def recall_ws(sock: WebSocket) -> None:
             elif ev == "participant_events.chat_message":
                 pid = _pid(d)
                 text = ((d.get("data") or {}).get("text") or "").strip().lower()
-                if any(p in text for p in CONSENT_PHRASES):
+                if text in OPT_IN:
                     consent.grant(pid)
                     consent.grant("meeting")  # mixed audio is keyed "meeting"; opt-in covers it
-                    print(f"[recall] ✓ {pid} consented (chat opt-in)", flush=True)
+                    print(f"[recall] ✓ {pid} consented (typed '{text}')", flush=True)
                     if meeting and token:
                         try:
                             await http.post(f"{NEST}/meetings/{meeting}/consent",

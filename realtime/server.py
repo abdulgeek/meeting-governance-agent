@@ -75,6 +75,32 @@ def _recall_base() -> str:
     return f"https://{RECALL_REGION}.recall.ai/api/v1/bot"
 
 
+# What the bot posts in chat once it's recording. Default-deny: typing "+" is the opt-in;
+# doing nothing means you're not recorded. Pinned so late joiners still see it.
+ANNOUNCE = ("🔒 This meeting is governed for privacy. To allow your voice to be recorded and "
+            "governed, type a single  +  in the chat. No reply = you are not recorded.")
+
+
+async def _announce_when_ready(bot_id: str, key: str) -> None:
+    # Wait for the bot to be admitted + recording, then post the consent ask. Best-effort:
+    # it must never raise into the request that spawned it.
+    hdr = {"Authorization": f"Token {key}"}
+    for _ in range(40):  # ~120s, matching Recall's waiting-room timeout
+        await asyncio.sleep(3)
+        try:
+            r = await _http.get(f"{_recall_base()}/{bot_id}", headers=hdr)
+            changes = r.json().get("status_changes") or []
+            code = changes[-1].get("code") if changes else ""
+            if code in ("in_call_recording", "in_call_not_recording"):
+                await _http.post(f"{_recall_base()}/{bot_id}/send_chat_message/",
+                                 json={"to": "everyone", "message": ANNOUNCE, "pin": True}, headers=hdr)
+                return
+            if code in ("call_ended", "done", "fatal"):
+                return
+        except Exception:
+            pass
+
+
 @app.post("/bots")
 async def create_bot(req: BotRequest):
     key = os.environ.get("RECALL_API_KEY")
@@ -106,7 +132,10 @@ async def create_bot(req: BotRequest):
     if r.status_code >= 300:
         raise HTTPException(502, r.text)
     bot = r.json()
-    return {"bot_id": bot.get("id"), "status": bot.get("status")}
+    bid = bot.get("id")
+    if bid:
+        asyncio.create_task(_announce_when_ready(bid, key))  # ask for consent once it's in the call
+    return {"bot_id": bid, "status": bot.get("status")}
 
 
 @app.delete("/bots/{bot_id}")
