@@ -1,81 +1,81 @@
-"""Join a REAL Zoom / Google Meet / Teams call via Recall.ai and govern every participant.
+"""Join a real Zoom / Google Meet / Teams call and govern it live.
 
-The live counterpart of run_meeting.py: same engine, same per-speaker consent, but the
-audio comes from a Recall bot in the actual call instead of the simulated source.
+Launches a Recall.ai bot that streams the meeting's audio to our /recall websocket, where
+the same governance engine runs (consent gate -> STT -> policy -> commit/drop/redact/flag).
 
-Prereqs (see RECALL.md):
-  RECALL_API_KEY=...                  in python-api/.env
-  GOV_API_EMAIL / GOV_API_PASSWORD    (optional) to persist to the dashboard
+Proven flow (see RECALL.md):
+  1. engine:   uv run uvicorn realtime.server:app --port 8000
+  2. tunnel:   cloudflared tunnel --url http://localhost:8000   ->  https://XXXX.trycloudflare.com
+  3. join:     uv run python scripts/join_meeting.py <meeting_url> wss://XXXX.trycloudflare.com
 
-Usage:
-  uv run python scripts/join_meeting.py "https://meet.google.com/abc-defg-hij"
+Reads RECALL_API_KEY + RECALL_REGION from python-api/.env. To show decisions on the
+dashboard, append:  --meeting <dashboard_meeting_id> --token <jwt>
+Add --separate if Recall has enabled per-participant audio for your workspace (per-speaker
+consent); otherwise we use the always-available mixed stream.
 """
 
 from __future__ import annotations
 
-import asyncio
+import json
 import os
 import sys
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-from governance.envload import load_env                                       # noqa: E402
+from governance.envload import load_env  # noqa: E402
 load_env(ROOT / ".env")
-
-import numpy as np                                                            # noqa: E402
-from faster_whisper import WhisperModel                                       # noqa: E402
-
-from governance.audit import Audit                                           # noqa: E402
-from governance.consent import ConsentRegistry                              # noqa: E402
-from governance.llm.bedrock_client import BedrockClient, DEFAULT_MODEL, DEFAULT_REGION  # noqa: E402
-from governance.meeting_runner import MeetingRunner                          # noqa: E402
-from governance.policy_check import PolicyChecker                            # noqa: E402
-from governance.recall_source import RecallMeetingSource                     # noqa: E402
-from governance.sink import Sink                                            # noqa: E402
-
-_VOCAB = "Project Atlas. Northwind Capital. Cendara Robotics."
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        sys.exit("usage: join_meeting.py <meeting_url>")
-    meeting_url = sys.argv[1]
-    if not os.environ.get("RECALL_API_KEY"):
+    if len(sys.argv) < 3:
+        sys.exit("usage: join_meeting.py <meeting_url> <wss_base> [--separate] "
+                 "[--meeting <id>] [--token <jwt>]")
+    meeting_url, wss_base = sys.argv[1], sys.argv[2].rstrip("/")
+    opts = sys.argv[3:]
+    separate = "--separate" in opts
+    mid = opts[opts.index("--meeting") + 1] if "--meeting" in opts else None
+    tok = opts[opts.index("--token") + 1] if "--token" in opts else None
+
+    key = os.environ.get("RECALL_API_KEY")
+    region = os.environ.get("RECALL_REGION", "us-west-2")
+    if not key:
         sys.exit("set RECALL_API_KEY in python-api/.env first (see RECALL.md)")
 
-    # default-deny: participants are recorded only after they opt in to the bot's prompt
-    consent = ConsentRegistry({})
-    policies = (ROOT / "policies" / "policies.txt").read_text()
-    model = os.environ.get("GOV_BEDROCK_MODEL_ID", DEFAULT_MODEL)
-    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or DEFAULT_REGION
-    checker = PolicyChecker(BedrockClient(model_id=model, region=region), policies)
+    endpoint = f"{wss_base}/recall"
+    if mid and tok:
+        endpoint += "?" + urlencode({"meeting": mid, "token": tok})
 
-    wm = WhisperModel("small.en", device="cpu", compute_type="int8")
+    artifact = "audio_separate_raw" if separate else "audio_mixed_raw"
+    body = {
+        "meeting_url": meeting_url,
+        "bot_name": "Governance Bot",
+        "recording_config": {
+            artifact: {},
+            "realtime_endpoints": [{
+                "type": "websocket",
+                "url": endpoint,
+                "events": [f"{artifact}.data", "participant_events.chat_message",
+                           "participant_events.join"],
+            }],
+        },
+    }
 
-    def transcribe(pcm: bytes) -> str:
-        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        segs, _ = wm.transcribe(audio, language="en", beam_size=5, initial_prompt=_VOCAB)
-        return " ".join(s.text.strip() for s in segs).strip()
-
-    out = ROOT / "out"; out.mkdir(exist_ok=True)
-
-    async def on_decision(d, shown: str) -> None:
-        tag = {"COMMIT": "kept", "DROP": "dropped", "REDACT": "redacted",
-               "FLAG": "flagged", "DECLINE": "declined (no consent)"}.get(d.action.value, d.action.value)
-        print(f"  {d.speaker:<14} {tag}")
-
-    async def on_consent(participant: str, granted: bool) -> None:
-        print(f"  ✓ {participant} {'consented' if granted else 'revoked consent'}")
-
-    runner = MeetingRunner(consent, checker, transcribe,
-                           Sink(out / "live_meeting_transcript.jsonl"),
-                           Audit(out / "live_meeting_audit.jsonl"),
-                           on_decision=on_decision, on_consent=on_consent)
-
-    print(f"Bot joining {meeting_url} … (announces consent prompt; governs each participant)")
-    asyncio.run(runner.run(RecallMeetingSource(meeting_url)))
+    req = urllib.request.Request(
+        f"https://{region}.recall.ai/api/v1/bot/",
+        data=json.dumps(body).encode(),
+        headers={"Authorization": f"Token {key}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            bot = json.load(r)
+        print(f"bot joining {meeting_url}\n  id:     {bot.get('id')}\n  audio:  {artifact}"
+              f"\n  stream: {endpoint}\nAdmit 'Governance Bot' in the call, then type "
+              f"'I consent' in chat to start governing.")
+    except urllib.error.HTTPError as e:
+        sys.exit(f"Recall error {e.code}: {e.read().decode()}")
 
 
 if __name__ == "__main__":

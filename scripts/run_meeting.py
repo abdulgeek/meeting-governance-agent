@@ -1,8 +1,8 @@
 """Run a multi-party governed meeting server-side — a 'bot' drives it, not a browser mic.
 
-Default uses SimulatedMeetingSource (replays the 4-participant scenario). Swap in
-RecallMeetingSource to join a real Zoom/Google Meet/Teams call. Proves the engine governs
-every participant with per-speaker consent and produces a per-participant transcript.
+Uses SimulatedMeetingSource (replays the 4-participant scenario). Proves the engine governs
+every participant with per-speaker consent and produces a per-participant transcript. To join
+a real call instead, see scripts/join_meeting.py + the /recall endpoint (RECALL.md).
 """
 
 from __future__ import annotations

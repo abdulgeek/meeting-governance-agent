@@ -44,6 +44,10 @@ app = FastAPI(title="meeting-governance-engine")
 # let the Next.js frontend talk to this backend (tighten allow_origins in production)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# /recall — a Recall.ai bot in a real meeting connects here and pushes live audio + events
+from realtime.recall_ws import router as recall_router  # noqa: E402
+app.include_router(recall_router)
+
 
 @app.get("/")
 async def root():

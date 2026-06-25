@@ -7,10 +7,12 @@ A MeetingSource yields a stream of events from a multi-party meeting:
 so the SAME governance runs on every speaker, and consent is dynamic + default-deny (nobody
 is recorded until they opt in to the bot's prompt).
 
-  - RecallMeetingSource (recall_source.py): a bot joins a real Zoom/Meet/Teams call, streams
-    SEPARATED per-participant audio + identity, and turns chat opt-ins into ConsentEvents.
   - SimulatedMeetingSource (here): replays the scenario as a live multi-party meeting,
     emitting the consenting participants' opt-ins first, then their audio.
+
+The live counterpart is the /recall websocket (realtime/recall_ws.py): a Recall.ai bot in a
+real Zoom/Meet/Teams call connects there and pushes audio + chat, governed the same way.
+See RECALL.md.
 """
 
 from __future__ import annotations

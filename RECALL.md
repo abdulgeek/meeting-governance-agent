@@ -1,45 +1,50 @@
 # Go live: join a real Zoom / Google Meet / Teams call
 
-The governance engine is meeting-agnostic — it consumes per-participant audio over a
-`MeetingSource` and governs every speaker with per-speaker consent. To join a *real* call
-we use **Recall.ai**: it puts a bot in the meeting and streams us **separated
-per-participant audio + identity**, so we get speaker attribution for free (no mixed-audio
-diarization) and gate consent by participant identity.
+A Recall.ai bot joins the real call and streams its audio to our `/recall` websocket, where
+the same governance engine runs. **Verified live on a Google Meet** — see the run log at the
+bottom.
 
 ```
-real meeting ──Recall bot──▶ per-participant audio + chat ──▶ RecallMeetingSource
-                                                              │  (AudioEvent / ConsentEvent)
+real meeting ──Recall bot──▶ (Recall cloud connects OUT to)  wss://<public>/recall
+                                                              │  base64 PCM16/16k + chat events
                                                               ▼
-                                              MeetingRunner ─▶ governance engine ─▶ decisions
-                                              (consent gated BEFORE STT)            └▶ dashboard
+                              recall_ws.py: buffer ▸ consent gate ▸ STT ▸ engine ▸ decisions
+                              (default-deny; chat opt-in grants)        └▶ dashboard (optional)
 ```
+
+Key facts (confirmed against Recall's API):
+- **Recall connects to us**, not the other way around — so the engine needs a public URL.
+- Audio arrives as **base64 PCM16 / 16 kHz / mono** (matches our STT) in `audio_*_raw.data`
+  events; `audio_separate_raw.data` carries `data.data.participant` identity.
+- The artifact must be **configured** in `recording_config` (e.g. `"audio_mixed_raw": {}`),
+  not just subscribed to in `realtime_endpoints[].events`.
+- **Per-participant audio (`audio_separate_raw`) is a workspace feature flag** Recall enables
+  on request (Slack), not via the API. Without it you get one mixed stream — which proves the
+  whole pipeline but can't attribute per speaker. With it, consent is gated per participant.
 
 ## Steps
-1. Create a Recall.ai account (free trial) and an API key: https://recall.ai
-2. Put it in `python-api/.env`:  `RECALL_API_KEY=...`
-3. (Optional, to show it on the dashboard) set `GOV_API_EMAIL` / `GOV_API_PASSWORD`.
-4. Run the bot against a meeting URL:
+1. `RECALL_API_KEY` + `RECALL_REGION` in `python-api/.env` (region is the one your key lives
+   in — ours is `ap-northeast-1`; a wrong region returns 401).
+2. Start the engine:  `uv run uvicorn realtime.server:app --port 8000`
+3. Expose it publicly (Recall must reach it):
+   `cloudflared tunnel --url http://localhost:8000`  → copy the `https://XXXX.trycloudflare.com`
+4. Launch the bot (use the `wss://` form of the tunnel URL):
    ```
-   uv run python scripts/join_meeting.py "https://meet.google.com/abc-defg-hij"
+   uv run python scripts/join_meeting.py "https://meet.google.com/abc-defg-hij" wss://XXXX.trycloudflare.com
    ```
-   The bot joins, posts the consent prompt in chat, and governs each participant live:
-   consenters are transcribed and governed (commit / drop / redact / flag); everyone else
-   is declined and never transcribed.
+   Add `--separate` if Recall enabled per-participant audio. Add `--meeting <id> --token <jwt>`
+   to persist decisions to the dashboard.
+5. **Admit "Governance Bot"** in the call, then **type `I consent`** in chat. Default-deny:
+   nothing is transcribed until someone opts in; revoke is symmetric.
 
-## Consent model (why audio, not Recall's transcripts)
-We take Recall's **per-participant audio** and run STT ourselves, so a non-consenting
-participant's audio is **never transcribed** — consent stays gated *before* STT, which is
-the whole point. (Recall can also return ready-made transcripts, but that would transcribe
-everyone before our gate, so we don't use that path.) Consent is dynamic: it's granted by a
-chat opt-in (`ConsentEvent`) and can be revoked mid-meeting.
-
-## What to finalize once a key is set (a short verify, like we did for Deepgram)
-`governance/recall_source.py` is written against Recall's real-time media API shape. With a
-key, confirm two things against current Recall docs:
-- the exact realtime message field names (audio frame + chat message + participant id), and
-- per-participant **utterance segmentation**: buffer each participant's frames and emit one
-  `AudioEvent` per utterance (Recall provides VAD / word timing for the endpoint), so STT
-  runs on whole utterances rather than raw frames.
-
-Everything downstream (consent, governance, persistence, the dashboard) is already built and
-verified — this is the only piece that needs the live key to lock in.
+## Verified run (live Google Meet, mixed audio)
+```
+#1–11  DECLINE (P5)   no consent  -> never transcribed (transcript stays empty)
+       ✓ Abdul consented (chat opt-in)
+#13    REDACT (P4)    "My account number is █████ ..."   (number masked before write)
+#17    DROP   (P2)    codename caught — content never persists
+#12,14 COMMIT         clean speech kept
+```
+21 utterances governed, 9 kept lines — every DROP/DECLINE absent from the record
+(decide-before-write). The engine code is identical to the simulated path (`run_meeting.py`,
+17/17 oracle); Recall is just the live audio source.
