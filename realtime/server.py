@@ -17,8 +17,10 @@ import sys
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -40,6 +42,9 @@ POLICIES = (ROOT / "policies" / "policies.txt").read_text()
 NEST_API_URL = os.environ.get("NEST_API_URL", "http://localhost:4000")
 _http = httpx.AsyncClient(timeout=5.0)
 
+# Recall.ai — this engine owns the bots; NestJS proxies launch/stop here.
+RECALL_REGION = os.environ.get("RECALL_REGION", "us-west-2")
+
 app = FastAPI(title="meeting-governance-engine")
 # let the Next.js frontend talk to this backend (tighten allow_origins in production)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -52,6 +57,79 @@ app.include_router(recall_router)
 @app.get("/")
 async def root():
     return {"service": "meeting-governance-engine", "ok": True, "ws": "/ws"}
+
+
+# ── Recall bots ──────────────────────────────────────────────────────────────────
+# Same create-bot shape as scripts/join_meeting.py, exposed over HTTP so NestJS can
+# launch/stop a bot for a logged-in user. The callback url is derived from PUBLIC_BASE_URL
+# (the cloudflared tunnel that fronts this engine).
+
+class BotRequest(BaseModel):
+    meeting_url: str
+    meeting_id: str | None = None
+    token: str | None = None
+    separate: bool = False
+
+
+def _recall_base() -> str:
+    return f"https://{RECALL_REGION}.recall.ai/api/v1/bot"
+
+
+@app.post("/bots")
+async def create_bot(req: BotRequest):
+    key = os.environ.get("RECALL_API_KEY")
+    public = os.environ.get("PUBLIC_BASE_URL")
+    if not key or not public:
+        raise HTTPException(400, "set RECALL_API_KEY and PUBLIC_BASE_URL in python-api/.env")
+
+    # swap the tunnel's https scheme for wss; the Recall bot connects to /recall
+    endpoint = public.rstrip("/").replace("https://", "wss://", 1) + "/recall"
+    if req.meeting_id and req.token:
+        endpoint += "?" + urlencode({"meeting": req.meeting_id, "token": req.token})
+
+    artifact = "audio_separate_raw" if req.separate else "audio_mixed_raw"
+    body = {
+        "meeting_url": req.meeting_url,
+        "bot_name": "Governance Bot",
+        "recording_config": {
+            artifact: {},
+            "realtime_endpoints": [{
+                "type": "websocket",
+                "url": endpoint,
+                "events": [f"{artifact}.data", "participant_events.chat_message",
+                           "participant_events.join"],
+            }],
+        },
+    }
+    r = await _http.post(f"{_recall_base()}/", json=body,
+                         headers={"Authorization": f"Token {key}"})
+    if r.status_code >= 300:
+        raise HTTPException(502, r.text)
+    bot = r.json()
+    return {"bot_id": bot.get("id"), "status": bot.get("status")}
+
+
+@app.delete("/bots/{bot_id}")
+async def stop_bot(bot_id: str):
+    key = os.environ.get("RECALL_API_KEY")
+    if not key:
+        raise HTTPException(400, "set RECALL_API_KEY in python-api/.env")
+    await _http.post(f"{_recall_base()}/{bot_id}/leave_call/",
+                     headers={"Authorization": f"Token {key}"})
+    return {"ok": True}
+
+
+@app.get("/bots/{bot_id}")
+async def bot_status(bot_id: str):
+    key = os.environ.get("RECALL_API_KEY")
+    if not key:
+        raise HTTPException(400, "set RECALL_API_KEY in python-api/.env")
+    r = await _http.get(f"{_recall_base()}/{bot_id}",
+                        headers={"Authorization": f"Token {key}"})
+    if r.status_code >= 300:
+        raise HTTPException(502, r.text)
+    changes = r.json().get("status_changes") or []
+    return {"status": changes[-1].get("code") if changes else "unknown"}
 
 
 def _make_stt():
