@@ -24,3 +24,10 @@ class ConsentRegistry:
     def has_consent(self, speaker_id: str) -> bool:
         # fail closed: an unknown speaker is treated as "did not consent"
         return self._consent.get(speaker_id, False)
+
+    def grant(self, speaker_id: str) -> None:
+        # in-meeting opt-in: the participant answered the bot's consent prompt
+        self._consent[speaker_id] = True
+
+    def revoke(self, speaker_id: str) -> None:
+        self._consent[speaker_id] = False

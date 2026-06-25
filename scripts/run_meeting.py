@@ -34,7 +34,8 @@ _VOCAB = "Project Atlas. Northwind Capital. Cendara Robotics. Maya Okafor, Raj P
 
 
 def main() -> None:
-    consent = ConsentRegistry.from_file(ROOT / "meeting" / "participants.json")
+    # default-deny: nobody is consented until they opt in to the bot's in-meeting prompt
+    consent = ConsentRegistry({})
     policies = (ROOT / "policies" / "policies.txt").read_text()
     model = os.environ.get("GOV_BEDROCK_MODEL_ID", DEFAULT_MODEL)
     region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or DEFAULT_REGION
@@ -48,9 +49,16 @@ def main() -> None:
         return " ".join(s.text.strip() for s in segs).strip()
 
     out = ROOT / "out"; out.mkdir(exist_ok=True)
+
+    print("In-meeting consent prompt — opt-ins:")
+
+    async def on_consent(participant: str, granted: bool) -> None:
+        print(f"  ✓ {participant} {'opted in (consented)' if granted else 'revoked consent'}")
+
     runner = MeetingRunner(consent, checker, transcribe,
                            Sink(out / "meeting_transcript.jsonl"),
-                           Audit(out / "meeting_audit.jsonl"))
+                           Audit(out / "meeting_audit.jsonl"),
+                           on_consent=on_consent)
     decisions = asyncio.run(runner.run(SimulatedMeetingSource(ROOT)))
 
     oracle = json.loads((ROOT / "tests" / "oracle.json").read_text())["expected"]
