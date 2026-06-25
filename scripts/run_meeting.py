@@ -50,16 +50,45 @@ def main() -> None:
 
     out = ROOT / "out"; out.mkdir(exist_ok=True)
 
+    # Optional: persist to the NestJS product API so the meeting shows on the dashboard.
+    # Set GOV_API_EMAIL + GOV_API_PASSWORD to enable (registers/logs in, makes a meeting).
+    import httpx
+    nest = os.environ.get("NEST_API_URL", "http://localhost:4000")
+    email, password = os.environ.get("GOV_API_EMAIL"), os.environ.get("GOV_API_PASSWORD")
+    meeting_id = None
+    client: httpx.AsyncClient | None = None
+    if email and password:
+        r = httpx.post(f"{nest}/auth/register", json={"email": email, "password": password})
+        if r.status_code == 409:
+            r = httpx.post(f"{nest}/auth/login", json={"email": email, "password": password})
+        token = r.json()["accessToken"]
+        meeting_id = httpx.post(f"{nest}/meetings", json={"title": "Multi-party governed meeting"},
+                                headers={"Authorization": f"Bearer {token}"}).json()["_id"]
+        client = httpx.AsyncClient(timeout=10, headers={"Authorization": f"Bearer {token}"})
+        print(f"persisting to dashboard meeting {meeting_id} (log in as {email})\n")
+
     print("In-meeting consent prompt — opt-ins:")
 
     async def on_consent(participant: str, granted: bool) -> None:
         print(f"  ✓ {participant} {'opted in (consented)' if granted else 'revoked consent'}")
+        if client:
+            await client.post(f"{nest}/meetings/{meeting_id}/consent",
+                              json={"participant": participant, "granted": granted})
+
+    async def on_decision(d, shown: str) -> None:
+        if client:
+            await client.post(f"{nest}/meetings/{meeting_id}/lines",
+                              json={"idx": d.idx, "speaker": d.speaker, "action": d.action.value,
+                                    "policyId": d.policy_id, "confidence": d.confidence, "shown": shown})
 
     runner = MeetingRunner(consent, checker, transcribe,
                            Sink(out / "meeting_transcript.jsonl"),
                            Audit(out / "meeting_audit.jsonl"),
-                           on_consent=on_consent)
+                           on_decision=on_decision, on_consent=on_consent)
     decisions = asyncio.run(runner.run(SimulatedMeetingSource(ROOT)))
+    if meeting_id:
+        print(f"\n→ open the dashboard, log in as {email}, open the meeting to see "
+              f"participants + consent + the governed transcript.")
 
     oracle = json.loads((ROOT / "tests" / "oracle.json").read_text())["expected"]
     by_spk: dict[str, list[str]] = {}
