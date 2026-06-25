@@ -51,6 +51,12 @@ def _pid(d: dict) -> str:
     return p.get("name") or p.get("email") or (f"spk{p['id']}" if p.get("id") is not None else "meeting")
 
 
+def _email(d: dict) -> str | None:
+    # Identity (lite): forward the Recall participant's email when known so NestJS can key
+    # DSAR on email||name. speaker (_pid) stays the display name. None when absent.
+    return (d.get("participant") or {}).get("email")
+
+
 @router.websocket("/recall")
 async def recall_ws(sock: WebSocket) -> None:
     await sock.accept()
@@ -63,6 +69,7 @@ async def recall_ws(sock: WebSocket) -> None:
     agent = GovernanceAgent(consent, checker, Sink(out / "recall_transcript.jsonl"),
                             Audit(out / "recall_audit.jsonl"))
     buffers: dict[str, bytearray] = {}
+    emails: dict[str, str] = {}  # pid -> email (identity lite), learned from Recall events
     state = {"idx": 0}
     loop = asyncio.get_event_loop()
     http = httpx.AsyncClient(timeout=10,
@@ -78,7 +85,7 @@ async def recall_ws(sock: WebSocket) -> None:
         segs, _ = _model.transcribe(audio, language="en", beam_size=5, initial_prompt=_VOCAB)
         return " ".join(s.text.strip() for s in segs).strip()
 
-    async def govern(pid: str, pcm: bytes) -> None:
+    async def govern(pid: str, pcm: bytes, email: str | None = None) -> None:
         if len(pcm) < _MIN_BYTES:
             return
         state["idx"] += 1
@@ -87,11 +94,13 @@ async def recall_ws(sock: WebSocket) -> None:
         show = shown if decision.action.value in ("COMMIT", "REDACT", "FLAG") else ""
         print(f"[recall] #{decision.idx} {pid} -> {decision.action.value} ({decision.policy_id}) {show[:70]}", flush=True)
         if meeting and token:
+            payload = {"idx": decision.idx, "speaker": pid, "action": decision.action.value,
+                       "policyId": decision.policy_id, "confidence": decision.confidence,
+                       "shown": shown}
+            if email:  # identity (lite): email when known; speaker stays the display name
+                payload["email"] = email
             try:
-                await http.post(f"{NEST}/meetings/{meeting}/lines",
-                                json={"idx": decision.idx, "speaker": pid, "action": decision.action.value,
-                                      "policyId": decision.policy_id, "confidence": decision.confidence,
-                                      "shown": shown})
+                await http.post(f"{NEST}/meetings/{meeting}/lines", json=payload)
             except Exception:
                 pass
 
@@ -102,7 +111,7 @@ async def recall_ws(sock: WebSocket) -> None:
                 for pid in list(buffers):
                     pcm = bytes(buffers.pop(pid, b""))
                     if len(pcm) >= _MIN_BYTES:
-                        await govern(pid, pcm)
+                        await govern(pid, pcm, emails.get(pid))
         except asyncio.CancelledError:
             pass
 
@@ -122,18 +131,27 @@ async def recall_ws(sock: WebSocket) -> None:
             if ev in ("audio_mixed_raw.data", "audio_separate_raw.data"):
                 buf = d.get("buffer")
                 if buf:
-                    buffers.setdefault(_pid(d), bytearray()).extend(base64.b64decode(buf))
+                    pid = _pid(d)
+                    email = _email(d)
+                    if email:
+                        emails[pid] = email
+                    buffers.setdefault(pid, bytearray()).extend(base64.b64decode(buf))
             elif ev == "participant_events.chat_message":
                 pid = _pid(d)
+                email = _email(d)
+                if email:
+                    emails[pid] = email
                 text = ((d.get("data") or {}).get("text") or "").strip().lower()
                 if text in OPT_IN:
                     consent.grant(pid)
                     consent.grant("meeting")  # mixed audio is keyed "meeting"; opt-in covers it
                     print(f"[recall] ✓ {pid} consented (typed '{text}')", flush=True)
                     if meeting and token:
+                        payload = {"participant": pid, "granted": True}
+                        if email:  # identity (lite): forward email when known
+                            payload["email"] = email
                         try:
-                            await http.post(f"{NEST}/meetings/{meeting}/consent",
-                                            json={"participant": pid, "granted": True})
+                            await http.post(f"{NEST}/meetings/{meeting}/consent", json=payload)
                         except Exception:
                             pass
     except WebSocketDisconnect:

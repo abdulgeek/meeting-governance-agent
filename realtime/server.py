@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -73,6 +74,42 @@ async def stop_bot(bot_id: str):
 @app.get("/bots/{bot_id}")
 async def get_bot(bot_id: str):
     return await bot_status(bot_id)
+
+
+# ── Governed summary ───────────────────────────────────────────────────────────
+# Summarizes ONLY the lines it is handed. The keep-only guarantee (no DROP/DECLINE,
+# no redacted text) is enforced caller-side in NestJS, which decrypts and passes only
+# COMMIT/REDACT/FLAG lines here. This endpoint trusts its input and adds nothing back.
+
+class SummaryLine(BaseModel):
+    speaker: str
+    text: str
+
+
+class SummarizeRequest(BaseModel):
+    lines: list[SummaryLine]
+    style: str | None = None
+
+
+_SUMMARY_SYSTEM = (
+    "You are a meeting-notes assistant. Summarize ONLY the transcript lines provided. "
+    "Do not invent, infer, or add facts that are not present in the lines. "
+    "Write clear, neutral prose. If the lines are sparse, keep the summary short."
+)
+
+
+@app.post("/summarize")
+async def summarize(req: SummarizeRequest):
+    if not req.lines:
+        return {"summary": ""}
+    transcript = "\n".join(f"{ln.speaker}: {ln.text}" for ln in req.lines)
+    style = (req.style or "a concise paragraph").strip()
+    user = (f"Summarize the following meeting transcript as {style}. "
+            f"Use only what is stated below.\n\n{transcript}")
+    client = BedrockClient(model_id=MODEL, region=REGION)
+    # Bedrock's boto3 client is sync; run it off the event loop so we don't block.
+    summary = await asyncio.to_thread(client.complete, _SUMMARY_SYSTEM, user)
+    return {"summary": summary.strip()}
 
 
 def _make_stt():
