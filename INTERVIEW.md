@@ -17,6 +17,7 @@ conversations, not another notetaker.
 3. Competitive landscape & positioning
 4. What we'd build next (roadmap)
 5. Latency & offline / on-device
+6. Streaming STT (interim/final, endpointing, keepalive, reconnection)
 
 ---
 
@@ -377,3 +378,80 @@ keep-warm treatment.
   tradeoff to validate.
 - We haven't load-tested concurrent meetings. The off-thread LLM call + stateless engine make
   horizontal scaling straightforward, but that's a claim to back with numbers, not assert.
+
+---
+
+## Streaming STT (interim/final, endpointing, keepalive, reconnection)
+
+We implemented streaming STT against **Deepgram's lower-level WebSocket protocol directly**
+(`governance/stt/deepgram_stream.py` — `wss://api.deepgram.com/v1/listen`, no SDK), behind a
+provider-agnostic interface, on a FastAPI WebSocket server. We didn't just read the patterns —
+we hit the exact production gotchas the docs warn about, and the fixes are in the code.
+
+### The provider-agnostic seam
+`governance/stt/streaming_base.py` defines a tiny `StreamingSTT` protocol:
+`start(on_utterance)`, `set_speaker`, `send_audio(pcm16)`, `end_utterance`, `close` — and a single
+`on_utterance(speaker, text)` callback. Deepgram and faster-whisper implement it today; **Whisper
+streaming, AssemblyAI, Google, and Azure Speech (all named in the JD) plug in the same way** — a new
+file, not a rewrite. The governance engine only ever sees `on_utterance(speaker, text)`; it never
+knows which provider produced it.
+
+### Interim vs. final results
+Deepgram streams **interim** results (partial, will change) and **final** ones. We subscribe with
+`interim_results=true` (`deepgram_stream.py:32`) but only **act on `is_final`** (`:109`): each
+`is_final` is one finalized, non-overlapping ASR segment = exactly one governed unit. Acting on
+interims would re-govern the same words repeatedly and redact/drop text that then changes under us.
+- **War story:** we first finalized on `speech_final` (Deepgram's endpoint flag) and got **zero
+  transcripts** mid-meeting — `speech_final` only fires after real trailing silence, which doesn't
+  happen when people talk continuously. Switching to `is_final` fixed it (the comment at `:106-108`
+  records why). This is the single subtlest thing about Deepgram streaming, and we have the scar.
+
+### Endpointing
+`endpointing=300` (`deepgram_stream.py:34`): Deepgram treats ~300 ms of silence as an utterance
+boundary and self-segments, so `end_utterance()` is a **no-op** for the Deepgram engine (`:69`).
+Three sources, three endpointing strategies, one output contract:
+- **Deepgram** — server-side endpointing (above).
+- **Local faster-whisper** — no server endpointing, so the browser signals end-of-turn explicitly
+  (push-to-talk `eou` message); `local_stream` buffers until told.
+- **Recall bot** — continuous frames, so a time-based flush (~4 s/speaker) bounds each utterance.
+
+### Keepalive
+Deepgram closes the socket with **code 1011** after ~10 s of no audio; push-to-talk gaps exceed
+that. We run a keepalive task that sends `{"type":"KeepAlive"}` every 5 s
+(`deepgram_stream.py:86-95`; `_KEEPALIVE_SECS = 5`, "ping well under" the ~10 s window).
+- **War story:** we hit the literal error — `1011 … Deepgram did not receive audio data … within
+  the timeout window` — during idle gaps, and fixed it with this keepalive. Exactly the production
+  concern the curriculum calls out.
+
+### Reconnection, persistent sessions, surviving disconnects
+- **Recall** holds a persistent WS to our `/recall` and **reconnects on drop** — verified: after an
+  engine restart the bot reconnected in ~9 s and resumed streaming.
+- **Disconnect-safe by construction:** `send_audio()` / `close()` are guarded
+  (`deepgram_stream.py:62-67, 72-84`), the read loop and keepalive run as separate tasks that
+  swallow `ConnectionClosed`/`CancelledError`, and the FastAPI handlers wrap everything in
+  `try/except(WebSocketDisconnect, Exception)/finally` with a guarded `close()`. A dropped Deepgram
+  socket or a client vanishing **never** bubbles an exception into the request handler.
+- **Honest gap:** the **browser** `/ws` client doesn't yet auto-reconnect with exponential backoff
+  if its own socket drops mid-session. The server side is already disconnect-safe and Recall already
+  reconnects; client-side backoff + resume is the one remaining "preserve context through
+  disconnects" piece, and it's a known next step.
+
+### Chunking & the sub-300 ms target
+The browser captures PCM and streams frames continuously (Web Audio `ScriptProcessor`) rather than
+waiting for full sentences — the same "slice live audio into small chunks" model, with Deepgram
+returning incrementally. We understand the 100–200 ms-chunk / <300 ms-latency knob. The **Recall bot
+path deliberately buffers ~4 s** per speaker before STT (`recall_ws._FLUSH_SECS`) — a conscious trade
+of latency for ASR accuracy and fewer downstream LLM calls. For true live captions we'd shrink that
+window and surface interims.
+
+### FastAPI
+The engine is FastAPI with `@app.websocket("/ws")` (browser mic) and `@router.websocket("/recall")`
+(Recall bot) — the "Live Transcription with FastAPI" shape: accept the socket, pump audio bytes into
+the streaming engine, push results back. The streaming engine and the FastAPI plumbing are cleanly
+separated (the engine doesn't know it's behind FastAPI; the handler doesn't know which provider).
+
+### Q: "Why the raw WebSocket instead of Deepgram's SDK?"
+Transparency and not pinning an SDK version: the wire protocol is documented and stable, and owning
+it means we see every interim/final/keepalive frame — which is precisely how we diagnosed the
+`speech_final` and `1011` issues. The cost is that we own the keepalive/reconnection logic — which is
+the whole point of learning it.
