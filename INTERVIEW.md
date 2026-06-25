@@ -16,6 +16,7 @@ conversations, not another notetaker.
 2. Risk, security & compliance
 3. Competitive landscape & positioning
 4. What we'd build next (roadmap)
+5. Latency & offline / on-device
 
 ---
 
@@ -310,3 +311,69 @@ Today the system governs *individual utterances* well — per-speaker consent ga
 **Next** is ordered to compound: identity resolution and KMS-wrapped keys are quiet prerequisites that make **#2 (receipts/export)** and **#3 (DSAR)** trustworthy, while **#1 (governed summary)** is the standalone commercial wedge we can ship in parallel without those prerequisites. The **later** list is mostly enablers (SSO, VPC) and surface-area expansion (integrations, OCR, multi-language) — each valuable, but none changes the core guarantee, so they wait until the governance-as-evidence story (receipts, DSAR, review queue) is complete.
 
 One thing I'd revisit: if early customers care more about *acting on* meetings than *proving* governance, I'd pull **governed integrations** forward ahead of DSAR — the thesis holds either way, but the buyer's first dollar might be for the Slack push, not the audit export.
+
+---
+
+## Latency & offline / on-device
+
+The role emphasizes real-time / low-latency and offline (on-device) operation. Here's how the
+system addresses both — and the honest limits.
+
+### Where latency lives
+The latency-critical path is per utterance: capture → STT → one LLM policy call → precedence →
+write. Two parts dominate:
+- **STT.** Deepgram streaming returns partial + final results with low latency in production;
+  faster-whisper runs locally (higher per-utterance latency, but offline). In the bot path we
+  buffer ~4s of a speaker's audio before transcribing (`recall_ws._FLUSH_SECS`) — a deliberate
+  tradeoff: larger chunks mean better ASR accuracy and fewer LLM calls, at the cost of up to ~4s
+  added latency. It's a single tunable.
+- **The policy LLM.** One Bedrock call per utterance. We keep it fast by **batching ALL policies
+  into one call** (a single round-trip returns every per-policy verdict, not N calls), **Haiku by
+  default** (Sonnet only when accuracy matters), temperature 0 + capped output tokens, running the
+  blocking boto3 call **off the event loop** (`asyncio.to_thread`) so concurrent speakers/sessions
+  don't block each other, and a hard timeout that **fails closed to DROP** rather than hanging.
+
+### Q: "How do you keep it real-time? What's the latency budget?"
+Decide-before-write is online and per-utterance with **no look-ahead** — we never wait for the
+meeting to end. The floor is *STT-finalize + one LLM round-trip*. We minimize each: stream STT,
+one batched LLM call, Haiku, **region co-location** (engine and Bedrock in the same AWS region),
+and off-thread inference. The biggest single lever is the buffer window (~4s) — it trades latency
+for accuracy/cost and is a config knob. For sub-second needs we'd shorten the window, use streaming
+partials, and add a **cheap local pre-filter** (keyword/NER) so the LLM only sees utterances that
+could plausibly fire a policy.
+
+### Q: "A per-utterance LLM call sounds like the bottleneck."
+It's the real floor and we're honest about it: a synchronous model call has network + inference
+cost. In place today: one batched call (not per-policy), the fastest adequate model, off-thread so
+it never blocks other speakers, fail-closed timeout. Next: a cheap pre-filter that resolves the
+obvious-keep majority without the LLM and only escalates ambiguous lines; a smaller/distilled judge;
+and, for the lowest latency or fully-offline deployments, moving the judge **on-device**.
+
+### Q: "Can it run offline / on-device?"
+Partly today, fully by design:
+- **STT** already has a local, no-internet path — faster-whisper runs entirely on-device (it's the
+  default when no Deepgram key). Transcription can be offline.
+- **The governance core** (consent gate, precedence, redaction, sink, content-free audit, crypto)
+  is all local logic — no network required.
+- The two cloud dependencies are the **policy LLM** (Bedrock) and **meeting capture** (Recall —
+  joining a cloud meeting inherently needs the network). The LLM sits behind a tiny interface
+  (`governance/llm/base.py`) *specifically* so it can be swapped: drop in a local model
+  (Llama/Mistral/…) and the decision core is unchanged. That's the path to a fully-offline or
+  on-prem/VPC judge — which is also what regulated buyers (legal/healthcare) ask for.
+- So: **offline STT now**, **offline judge via the LLM interface**, **offline storage/governance
+  already**. Recall is the only inherently-online piece, because the meeting itself is in the cloud.
+
+### Q: "Model loading / cold-start latency?"
+The STT model loads lazily on first use (a few seconds) and is then held in memory and reused (a
+module-level singleton, loaded in an executor so it never blocks the event loop). For a
+desktop/offline build you'd **preload and warm** it at startup so the first utterance isn't slow.
+The LLM is a remote call (no local load) today; a local judge would get the same load-once,
+keep-warm treatment.
+
+### Honest limits
+- The ~4s buffer is the main added latency in the bot path — tuned for ASR accuracy, not minimum
+  latency. Shrinking it is a one-line change with an accuracy tradeoff.
+- A fully offline product needs a local judge model; the quality/latency of local models is the
+  tradeoff to validate.
+- We haven't load-tested concurrent meetings. The off-thread LLM call + stateless engine make
+  horizontal scaling straightforward, but that's a claim to back with numbers, not assert.
