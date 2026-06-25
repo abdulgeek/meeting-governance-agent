@@ -31,28 +31,28 @@ class GovernanceAgent:
 
     def run(self, stream: Iterable[tuple[int, str, str]]) -> Iterator[Decision]:
         for idx, speaker, text in stream:
-            yield self._process(idx, speaker, text)
+            decision, _shown = self.process(idx, speaker, text)
+            yield decision
 
-    def _process(self, idx: int, speaker: str, text: str) -> Decision:
+    def process(self, idx: int, speaker: str, text: str) -> tuple[Decision, str]:
+        """Decide and act on one utterance. Returns (decision, shown_text) so the live
+        server can display the kept/placeholder text without re-deriving it."""
         raw = text  # the only cleartext copy of this line - a local, gone after the tick
 
         # Consent gate. If they didn't agree, we stop here: no model call, no write.
-        # This is why a non-consenting speaker can't be leaked by a model slip.
         if not self.consent.has_consent(speaker):
             decision = Decision(idx=idx, speaker=speaker, action=Action.DECLINE,
                                 policy_id="P5", confidence=1.0, note="no consent")
-            self._emit(decision, shown="[declined::no_consent]",
-                       retained="[declined::no_consent]")
+            shown = "[declined::no_consent]"
+            self._emit(decision, shown=shown, retained=shown)
             del raw
-            return decision
+            return decision, shown
 
         # Ask the model about P1-P4, then let our code pick the single action.
         result = self.checker.check(raw, speaker, self.window.context())
         action, policy_id, targets, conf, note = resolve(result)
 
         # Act. This is the only place text becomes durable.
-        shown: str
-        retained: str
         if action == Action.COMMIT:
             self.sink.write({"idx": idx, "speaker": speaker, "text": raw})
             shown = retained = raw
@@ -80,7 +80,7 @@ class GovernanceAgent:
                             policy_id=policy_id, confidence=conf, note=note)
         self._emit(decision, shown=shown, retained=retained)
         del raw  # drop the cleartext before moving to the next line
-        return decision
+        return decision, shown
 
     def _emit(self, decision: Decision, shown: str, retained: str) -> None:
         self.audit.record(decision)

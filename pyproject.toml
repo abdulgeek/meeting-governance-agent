@@ -7,6 +7,10 @@ dependencies = [
     "faster-whisper>=1.0.0",
     "boto3>=1.34.0",
     "pydantic>=2.6.0",
+    "fastapi>=0.138.0",
+    "uvicorn[standard]>=0.49.0",
+    "websockets>=16.0",
+    "deepgram-sdk>=7.3.1",
 ]
 
 [tool.uv]

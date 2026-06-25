@@ -1,0 +1,103 @@
+"""Live governance engine: audio over WebSocket -> streaming STT -> engine -> decisions.
+
+A headless WebSocket API (no UI here - the Next.js frontend is the client). Reuses the
+exact governance engine (consent gate, policy-check tool, precedence, actions); the only
+new parts are the streaming STT and the WebSocket plumbing.
+
+Run:  uv run uvicorn realtime.server:app --port 8000   (clients connect to ws://host:8000/ws)
+Uses Deepgram if DEEPGRAM_API_KEY is set, otherwise the local fallback STT.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from governance.envload import load_env                                       # noqa: E402
+load_env(ROOT / ".env")
+
+from governance.agent import GovernanceAgent                                  # noqa: E402
+from governance.audit import Audit                                            # noqa: E402
+from governance.consent import ConsentRegistry                               # noqa: E402
+from governance.llm.bedrock_client import BedrockClient, DEFAULT_MODEL, DEFAULT_REGION  # noqa: E402
+from governance.policy_check import PolicyChecker                            # noqa: E402
+from governance.sink import Sink                                             # noqa: E402
+from governance.stt.local_stream import LocalStreamingSTT                    # noqa: E402
+
+MODEL = os.environ.get("GOV_BEDROCK_MODEL_ID", DEFAULT_MODEL)
+REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or DEFAULT_REGION
+POLICIES = (ROOT / "policies" / "policies.txt").read_text()
+
+app = FastAPI(title="meeting-governance-engine")
+# let the Next.js frontend talk to this backend (tighten allow_origins in production)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.get("/")
+async def root():
+    return {"service": "meeting-governance-engine", "ok": True, "ws": "/ws"}
+
+
+def _make_stt():
+    if os.environ.get("DEEPGRAM_API_KEY"):
+        from governance.stt.deepgram_stream import DeepgramStreamingSTT
+        return DeepgramStreamingSTT(), "deepgram"
+    return LocalStreamingSTT(), "local"
+
+
+@app.websocket("/ws")
+async def ws(sock: WebSocket) -> None:
+    await sock.accept()
+
+    # one engine per session. consent_map is mutated in place so a live config update
+    # is reflected by the registry that already holds a reference to it.
+    consent_map = {"you": True, "guest": False}
+    consent = ConsentRegistry(consent_map)
+    checker = PolicyChecker(BedrockClient(model_id=MODEL, region=REGION), POLICIES)
+    out = ROOT / "out"; out.mkdir(exist_ok=True)
+    agent = GovernanceAgent(consent, checker,
+                            Sink(out / "live_transcript.jsonl"),
+                            Audit(out / "live_audit.jsonl"))
+    stt, engine = _make_stt()
+    state = {"idx": 0}
+
+    async def on_utterance(speaker: str, text: str) -> None:
+        state["idx"] += 1
+        decision, shown = agent.process(state["idx"], speaker, text)
+        await sock.send_json({"type": "decision", "idx": decision.idx, "speaker": speaker,
+                              "action": decision.action.value, "policy_id": decision.policy_id,
+                              "confidence": decision.confidence, "shown": shown})
+
+    await stt.start(on_utterance)
+    await sock.send_json({"type": "ready", "engine": engine, "model": MODEL})
+
+    try:
+        while True:
+            msg = await sock.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+            if msg.get("bytes") is not None:
+                await stt.send_audio(msg["bytes"])
+            elif msg.get("text") is not None:
+                data = json.loads(msg["text"])
+                kind = data.get("type")
+                if kind == "config":
+                    consent_map.clear(); consent_map.update(data.get("consent", {}))
+                elif kind == "speaker":
+                    await stt.set_speaker(data.get("id", "you"))
+                elif kind == "eou":
+                    await stt.end_utterance()
+                elif kind == "bye":
+                    break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await stt.close()

@@ -5,19 +5,16 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 *.egg-info/
-dist/
-build/
 .DS_Store
 
 # secrets — never commit
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-# runtime outputs (transcripts, audit logs from demo runs)
+# runtime outputs (governed transcripts / audit from demo runs)
 out/
 
-# audio build artifacts (wav + manifest.json are committed)
+# audio build artifacts (the .wav segments + manifest.json are committed)
 audio/*.aiff
 audio/_concat.txt
-
