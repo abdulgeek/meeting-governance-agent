@@ -20,10 +20,9 @@ from pathlib import Path
 
 from faster_whisper import WhisperModel
 
-_VOCAB_HINT = (
-    "Project Atlas. Northwind Capital. Cendara Robotics. "
-    "Maya Okafor, Raj Patel, Lena Fischer, Tomás Herrera."
-)
+from ..vocab import VOCAB_WITH_NAMES
+
+_VOCAB_HINT = VOCAB_WITH_NAMES
 
 
 class FasterWhisperEngine:

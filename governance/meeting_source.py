@@ -22,7 +22,7 @@ import json
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Protocol, Union
+from typing import AsyncIterator, Protocol
 
 
 @dataclass
@@ -37,7 +37,7 @@ class ConsentEvent:
     granted: bool = True
 
 
-MeetingEvent = Union[AudioEvent, ConsentEvent]
+MeetingEvent = AudioEvent | ConsentEvent
 
 
 class MeetingSource(Protocol):

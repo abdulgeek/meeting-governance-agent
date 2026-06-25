@@ -35,6 +35,13 @@ class MeetingRunner:
         self.on_consent = on_consent
 
     async def run(self, source) -> list[Decision]:
+        """Drive governance over the source's event stream.
+
+        ConsentEvents update the registry (grant/revoke, default-deny). AudioEvents pass the
+        consent gate first: only a consented participant is transcribed (STT), then the engine
+        processes the utterance and emits a Decision. on_consent/on_decision hooks fire as
+        each event is handled.
+        """
         idx = 0
         out: list[Decision] = []
         async for ev in source.events():

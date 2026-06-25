@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from .llm.base import LLMClient
 from .schemas import PolicyCheckResult, PolicyVerdict
+
+_log = logging.getLogger(__name__)
 
 _SYSTEM = """You are the policy-check tool inside a real-time meeting-governance system.
 You are given governance policies written in plain English, a few lines of prior
@@ -92,6 +95,7 @@ class PolicyChecker:
             if not verdicts:
                 return PolicyCheckResult(verdicts=[], valid=False)
             return PolicyCheckResult(verdicts=verdicts, valid=True)
-        except Exception:
+        except Exception as e:
             # anything goes wrong -> unsure, and precedence will fail closed
+            _log.warning("policy check failed (%s); failing closed", type(e).__name__)
             return PolicyCheckResult(verdicts=[], valid=False)

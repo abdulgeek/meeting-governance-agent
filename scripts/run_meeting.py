@@ -29,8 +29,9 @@ from governance.meeting_runner import MeetingRunner                          # n
 from governance.meeting_source import SimulatedMeetingSource                 # noqa: E402
 from governance.policy_check import PolicyChecker                            # noqa: E402
 from governance.sink import Sink                                            # noqa: E402
+from governance.vocab import VOCAB_WITH_NAMES                                # noqa: E402
 
-_VOCAB = "Project Atlas. Northwind Capital. Cendara Robotics. Maya Okafor, Raj Patel, Lena Fischer, Tomás Herrera."
+_VOCAB = VOCAB_WITH_NAMES
 
 
 def main() -> None:
@@ -84,6 +85,7 @@ def main() -> None:
     runner = MeetingRunner(consent, checker, transcribe,
                            Sink(out / "meeting_transcript.jsonl"),
                            Audit(out / "meeting_audit.jsonl"),
+                           window_size=4,
                            on_decision=on_decision, on_consent=on_consent)
     decisions = asyncio.run(runner.run(SimulatedMeetingSource(ROOT)))
     if meeting_id:

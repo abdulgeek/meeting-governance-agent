@@ -11,9 +11,10 @@ import asyncio
 import numpy as np
 from faster_whisper import WhisperModel
 
+from ..vocab import VOCAB_WITH_NAMES
 from .streaming_base import OnUtterance
 
-_VOCAB = "Project Atlas. Northwind Capital. Cendara Robotics. Maya Okafor, Raj Patel, Lena Fischer, Tomás Herrera."
+_VOCAB = VOCAB_WITH_NAMES
 _MIN_BYTES = 3200  # ~0.1s at 16 kHz/16-bit; ignore anything shorter
 
 

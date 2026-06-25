@@ -29,6 +29,7 @@ from governance.consent import ConsentRegistry                                # 
 from governance.llm.bedrock_client import BedrockClient, DEFAULT_MODEL, DEFAULT_REGION  # noqa: E402
 from governance.policy_check import PolicyChecker                             # noqa: E402
 from governance.sink import Sink                                             # noqa: E402
+from governance.vocab import VOCAB_TERMS                                      # noqa: E402
 
 POLICIES = (ROOT / "policies" / "policies.txt").read_text()
 MODEL = os.environ.get("GOV_BEDROCK_MODEL_ID", DEFAULT_MODEL)
@@ -37,7 +38,7 @@ NEST = os.environ.get("NEST_API_URL", "http://localhost:4000")
 # A participant opts in by typing a single token (the bot asks them to type "+"). Exact
 # match on the whole (trimmed) message, so normal chatter never trips it.
 OPT_IN = {"+", "yes", "y", "ok", "👍", "1"}
-_VOCAB = "Project Atlas. Northwind Capital. Cendara Robotics."
+_VOCAB = VOCAB_TERMS
 _FLUSH_SECS = 4.0
 _MIN_BYTES = 16000  # ~0.5s at 16 kHz/16-bit
 
