@@ -11,6 +11,7 @@ dependencies = [
     "uvicorn[standard]>=0.49.0",
     "websockets>=16.0",
     "deepgram-sdk>=7.3.1",
+    "httpx>=0.28.1",
 ]
 
 [tool.uv]

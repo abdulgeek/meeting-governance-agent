@@ -10,11 +10,13 @@ Uses Deepgram if DEEPGRAM_API_KEY is set, otherwise the local fallback STT.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -35,6 +37,8 @@ from governance.stt.local_stream import LocalStreamingSTT                    # n
 MODEL = os.environ.get("GOV_BEDROCK_MODEL_ID", DEFAULT_MODEL)
 REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or DEFAULT_REGION
 POLICIES = (ROOT / "policies" / "policies.txt").read_text()
+NEST_API_URL = os.environ.get("NEST_API_URL", "http://localhost:4000")
+_http = httpx.AsyncClient(timeout=5.0)
 
 app = FastAPI(title="meeting-governance-engine")
 # let the Next.js frontend talk to this backend (tighten allow_origins in production)
@@ -67,7 +71,18 @@ async def ws(sock: WebSocket) -> None:
                             Sink(out / "live_transcript.jsonl"),
                             Audit(out / "live_audit.jsonl"))
     stt, engine = _make_stt()
-    state = {"idx": 0}
+    state = {"idx": 0, "meeting": None, "token": None}
+
+    async def persist(payload: dict) -> None:
+        # fire-and-forget: a persistence hiccup must not stall the live stream.
+        # NestJS re-applies the ephemerality boundary (DROP/DECLINE store no text).
+        if not (state["meeting"] and state["token"]):
+            return
+        try:
+            await _http.post(f"{NEST_API_URL}/meetings/{state['meeting']}/lines",
+                             json=payload, headers={"Authorization": f"Bearer {state['token']}"})
+        except Exception:
+            pass
 
     async def on_utterance(speaker: str, text: str) -> None:
         state["idx"] += 1
@@ -75,6 +90,9 @@ async def ws(sock: WebSocket) -> None:
         await sock.send_json({"type": "decision", "idx": decision.idx, "speaker": speaker,
                               "action": decision.action.value, "policy_id": decision.policy_id,
                               "confidence": decision.confidence, "shown": shown})
+        asyncio.create_task(persist({
+            "idx": decision.idx, "speaker": speaker, "action": decision.action.value,
+            "policyId": decision.policy_id, "confidence": decision.confidence, "shown": shown}))
 
     await stt.start(on_utterance)
     await sock.send_json({"type": "ready", "engine": engine, "model": MODEL})
@@ -91,6 +109,8 @@ async def ws(sock: WebSocket) -> None:
                 kind = data.get("type")
                 if kind == "config":
                     consent_map.clear(); consent_map.update(data.get("consent", {}))
+                    if data.get("meetingId"): state["meeting"] = data["meetingId"]
+                    if data.get("token"): state["token"] = data["token"]
                 elif kind == "speaker":
                     await stt.set_speaker(data.get("id", "you"))
                 elif kind == "eou":
