@@ -5,8 +5,9 @@ interchangeable. An engine receives raw PCM16 mono 16 kHz audio and calls `on_ut
 (speaker, text) whenever it has a finalized utterance.
 
 `set_speaker` lets the server tell the engine who's currently talking (from the demo's
-speaker selector for now; from voiceprint ID later). `end_utterance` is how the local
-engine is told a turn ended; Deepgram finalizes on its own and ignores it.
+speaker selector, or the meeting bot's per-participant identity in production).
+`end_utterance` is how the local engine is told a turn ended; Deepgram finalizes on its
+own and ignores it.
 """
 
 from __future__ import annotations
