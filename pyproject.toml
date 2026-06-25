@@ -12,6 +12,7 @@ dependencies = [
     "websockets>=16.0",
     "deepgram-sdk>=7.3.1",
     "httpx>=0.28.1",
+    "librosa>=0.11.0",
 ]
 
 [tool.uv]

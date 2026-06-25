@@ -40,6 +40,15 @@ POLICIES = (ROOT / "policies" / "policies.txt").read_text()
 NEST_API_URL = os.environ.get("NEST_API_URL", "http://localhost:4000")
 _http = httpx.AsyncClient(timeout=5.0)
 
+# Phase 3: build the voiceprint registry ONCE at startup (enrolling + the first MFCC warm
+# the numba JIT here, not inside a connection handler where it would block the WS accept).
+_VOICEPRINT = None
+if os.environ.get("GOV_VOICEPRINT"):
+    from governance.voiceprint import VoiceprintRegistry
+    _manifest = json.loads((ROOT / "audio" / "manifest.json").read_text())
+    _VOICEPRINT = VoiceprintRegistry.from_scenario(
+        ROOT / "meeting" / "participants.json", ROOT, _manifest)
+
 app = FastAPI(title="meeting-governance-engine")
 # let the Next.js frontend talk to this backend (tighten allow_origins in production)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -51,6 +60,10 @@ async def root():
 
 
 def _make_stt():
+    # Voiceprint mode (Phase 3) takes priority: identify the speaker by voice and gate
+    # consent before STT. Registry is prebuilt at startup (_VOICEPRINT).
+    if _VOICEPRINT is not None:
+        return LocalStreamingSTT(voiceprint=_VOICEPRINT), "local+voiceprint"
     if os.environ.get("DEEPGRAM_API_KEY"):
         from governance.stt.deepgram_stream import DeepgramStreamingSTT
         return DeepgramStreamingSTT(), "deepgram"

@@ -19,13 +19,14 @@ _MIN_BYTES = 3200  # ~0.1s at 16 kHz/16-bit; ignore anything shorter
 
 
 class LocalStreamingSTT:
-    def __init__(self, model_size: str = "small.en"):
+    def __init__(self, model_size: str = "small.en", voiceprint=None):
         self._model_size = model_size
         self._model: WhisperModel | None = None
         self._buf = bytearray()
         self._cb: OnUtterance | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._speaker = "speaker"
+        self._vp = voiceprint  # optional VoiceprintRegistry: identify + gate before STT
 
     async def start(self, on_utterance: OnUtterance) -> None:
         self._cb = on_utterance
@@ -45,6 +46,22 @@ class LocalStreamingSTT:
             return
         pcm = bytes(self._buf)
         self._buf.clear()
+
+        # Voiceprint mode: identify the speaker from the audio and gate consent BEFORE
+        # transcription. A non-consenting (or unknown) speaker is never sent to STT - we
+        # emit an empty utterance and the agent's consent gate declines it.
+        if self._vp is not None:
+            speaker, _score = self._vp.identify(pcm)
+            if not self._vp.has_consent(speaker):
+                if self._cb:
+                    await self._cb(speaker, "")  # not transcribed -> agent declines
+                return
+            text = (await self._loop.run_in_executor(None, self._transcribe, pcm)).strip()
+            if text and self._cb:
+                await self._cb(speaker, text)
+            return
+
+        # Manual-speaker mode (no voiceprint): transcribe, attribute to the set speaker.
         text = (await self._loop.run_in_executor(None, self._transcribe, pcm)).strip()
         if text and self._cb:
             await self._cb(self._speaker, text)
