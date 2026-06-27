@@ -1,4 +1,4 @@
-"""The unsure path — uncertainty must cost a recording, never a leak."""
+"""The unsure path - uncertainty must cost a recording, never a leak."""
 
 from governance.precedence import resolve
 from governance.schemas import Action, PolicyCheckResult, PolicyVerdict

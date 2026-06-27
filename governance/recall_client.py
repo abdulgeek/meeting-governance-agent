@@ -1,4 +1,4 @@
-"""Recall.ai bot management — create/leave/status + the consent announcement.
+"""Recall.ai bot management - create/leave/status + the consent announcement.
 
 This engine owns the bots; NestJS proxies launch/stop here. Kept out of the FastAPI routes
 so the HTTP wiring is one place. Same request/response shapes as before.
@@ -14,7 +14,7 @@ import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-# Recall.ai — this engine owns the bots; NestJS proxies launch/stop here.
+# Recall.ai - this engine owns the bots; NestJS proxies launch/stop here.
 RECALL_REGION = os.environ.get("RECALL_REGION", "us-west-2")
 
 # Shared client, reused across bot calls.
@@ -64,8 +64,13 @@ async def create_bot(req: BotRequest) -> dict:
     if not key or not public:
         raise HTTPException(400, "set RECALL_API_KEY and PUBLIC_BASE_URL in python-api/.env")
 
-    # swap the tunnel's https scheme for wss; the Recall bot connects to /recall
-    endpoint = public.rstrip("/").replace("https://", "wss://", 1) + "/recall"
+    # Recall bot connects to /recall; map public http(s) base to ws(s).
+    base = public.rstrip("/")
+    if base.startswith("https://"):
+        base = "wss://" + base[len("https://"):]
+    elif base.startswith("http://"):
+        base = "ws://" + base[len("http://"):]
+    endpoint = base + "/recall"
     if req.meeting_id and req.token:
         endpoint += "?" + urlencode({"meeting": req.meeting_id, "token": req.token})
 

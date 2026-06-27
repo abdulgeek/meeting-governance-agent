@@ -1,4 +1,4 @@
-"""Meeting capture layer — the seam that turns this into a product that joins real calls.
+"""Meeting capture layer - the seam that turns this into a product that joins real calls.
 
 A MeetingSource yields a stream of events from a multi-party meeting:
   - AudioEvent(participant, pcm)  : that participant spoke (per-participant audio)

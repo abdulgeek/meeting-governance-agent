@@ -91,7 +91,7 @@ async def main() -> int:
         and all(l.get("text") for l in keeps)            # kept lines: text present
         and not any(n in blob for n in ["8847", "4012", "190", "160"])  # no sensitive digits
     )
-    print("\nINTEGRATION:", "PASS — 17 persisted; DROP/DECLINE store no text; no sensitive digits leaked"
+    print("\nINTEGRATION:", "PASS - 17 persisted; DROP/DECLINE store no text; no sensitive digits leaked"
           if ok else "FAIL")
     return 0 if ok else 1
 

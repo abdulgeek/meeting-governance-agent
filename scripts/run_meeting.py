@@ -1,4 +1,4 @@
-"""Run a multi-party governed meeting server-side — a 'bot' drives it, not a browser mic.
+"""Run a multi-party governed meeting server-side - a 'bot' drives it, not a browser mic.
 
 Uses SimulatedMeetingSource (replays the 4-participant scenario). Proves the engine governs
 every participant with per-speaker consent and produces a per-participant transcript. To join
@@ -68,7 +68,7 @@ def main() -> None:
         client = httpx.AsyncClient(timeout=10, headers={"Authorization": f"Bearer {token}"})
         print(f"persisting to dashboard meeting {meeting_id} (log in as {email})\n")
 
-    print("In-meeting consent prompt — opt-ins:")
+    print("In-meeting consent prompt - opt-ins:")
 
     async def on_consent(participant: str, granted: bool) -> None:
         print(f"  ✓ {participant} {'opted in (consented)' if granted else 'revoked consent'}")
@@ -106,7 +106,7 @@ def main() -> None:
     for spk, acts in by_spk.items():
         consented = consent.has_consent(spk)
         print(f"  {spk:<6} consent={consented!s:<5} {len(acts)} utterances -> {acts}")
-    print(f"\n{ok}/{len(decisions)} match oracle — multi-party governance with per-speaker consent")
+    print(f"\n{ok}/{len(decisions)} match oracle - multi-party governance with per-speaker consent")
     sys.exit(0 if ok == len(decisions) else 1)
 
 

@@ -1,4 +1,4 @@
-"""The precedence lattice — deterministic, offline (no model, no network)."""
+"""The precedence lattice - deterministic, offline (no model, no network)."""
 
 from governance.precedence import resolve
 from governance.schemas import Action, PolicyCheckResult, PolicyVerdict

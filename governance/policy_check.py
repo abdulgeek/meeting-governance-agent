@@ -1,4 +1,4 @@
-"""LLM policy-check tool — grades P1-P4, returns structured verdicts (no side effects)."""
+"""LLM policy-check tool - grades P1-P4, returns structured verdicts (no side effects)."""
 
 from __future__ import annotations
 

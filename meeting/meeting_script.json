@@ -1,22 +1,107 @@
 {
-  "_note": "TTS source only — runtime pipeline transcribes audio, not this file.",
+  "_note": "TTS source only - runtime pipeline transcribes audio, not this file.",
   "utterances": [
-    { "idx": 1,  "speaker": "maya",  "beat": "B1",  "text": "Good morning everyone, thanks for joining. Can everyone hear me okay? Let's start with a quick round of introductions." },
-    { "idx": 2,  "speaker": "raj",   "beat": "B1",  "text": "Raj Patel here, from Northwind. I'll be leading the diligence analysis today." },
-    { "idx": 3,  "speaker": "lena",  "beat": "B1",  "text": "Lena Fischer, Chief Financial Officer at Cendara. Glad to be here." },
-    { "idx": 4,  "speaker": "tomas", "beat": "B1",  "text": "Tomás Herrera, outside counsel for Cendara. Good to be with you all." },
-    { "idx": 5,  "speaker": "raj",   "beat": "B2",  "text": "For today's agenda, we'll cover the financials, the customer contracts, the I P portfolio, and any open liabilities." },
-    { "idx": 6,  "speaker": "maya",  "beat": "B3",  "text": "Before we dig in, let's align on where we are on Project Atlas, because this deal is moving quickly." },
-    { "idx": 7,  "speaker": "lena",  "beat": "B4",  "text": "Last year we did forty two million in revenue. Our top customer was about eighteen percent of that, and churn stayed under five percent." },
-    { "idx": 8,  "speaker": "lena",  "beat": "B5",  "text": "For the diligence escrow, the bank account number is 8 8 4 7, 2 2 0 1 9 3, 0 4." },
-    { "idx": 9,  "speaker": "lena",  "beat": "B5",  "text": "And for the expense reconciliation, the corporate card number is 4 0 1 2, 8 8 8 8, 3 3 2 0, 7 7 4 1." },
-    { "idx": 10, "speaker": "raj",   "beat": "B6",  "text": "Let's model the retention packages. The lead engineer is on a base salary of one hundred ninety thousand, plus forty thousand in equity." },
-    { "idx": 11, "speaker": "lena",  "beat": "B6",  "text": "Right, and the two senior engineers are each on a base of one hundred sixty thousand with a twenty thousand bonus." },
-    { "idx": 12, "speaker": "tomas", "beat": "B7",  "text": "On the contract assignment clauses, most agreements allow assignment on a change of control, but three of them require counterparty consent, which could complicate the transaction." },
-    { "idx": 13, "speaker": "lena",  "beat": "B8",  "text": "I should flag something. On the X two hundred product line, we shipped a firmware build we knew had a safety defect, and we missed the required regulatory disclosure deadline." },
-    { "idx": 14, "speaker": "raj",   "beat": "B9",  "text": "On a lighter note, did anyone watch that climbing documentary, Project Atlas, The Everest Ascent? It was fantastic." },
-    { "idx": 15, "speaker": "raj",   "beat": "B9",  "text": "Also, if you need it, Cendara's main office line is 4 1 5, 5 5 5, 0 1 8 2." },
-    { "idx": 16, "speaker": "maya",  "beat": "B10", "text": "Let's talk scheduling and next steps. The board will also touch on our comp philosophy at the offsite next month." },
-    { "idx": 17, "speaker": "maya",  "beat": "B11", "text": "Great, I think that's everything. Let's reconvene next Thursday. Thanks everyone for your time." }
+    {
+      "idx": 1,
+      "speaker": "maya",
+      "beat": "B1",
+      "text": "Good morning everyone, thanks for joining. Can everyone hear me okay? Let's start with a quick round of introductions."
+    },
+    {
+      "idx": 2,
+      "speaker": "raj",
+      "beat": "B1",
+      "text": "Raj Patel here, from Northwind. I'll be leading the diligence analysis today."
+    },
+    {
+      "idx": 3,
+      "speaker": "lena",
+      "beat": "B1",
+      "text": "Lena Fischer, Chief Financial Officer at Cendara. Glad to be here."
+    },
+    {
+      "idx": 4,
+      "speaker": "tomas",
+      "beat": "B1",
+      "text": "Tomás Herrera, outside counsel for Cendara. Good to be with you all."
+    },
+    {
+      "idx": 5,
+      "speaker": "raj",
+      "beat": "B2",
+      "text": "For today's agenda, we'll cover the financials, the customer contracts, the I P portfolio, and any open liabilities."
+    },
+    {
+      "idx": 6,
+      "speaker": "maya",
+      "beat": "B3",
+      "text": "Before we dig in, let's align on where we are on Project Atlas, because this deal is moving quickly."
+    },
+    {
+      "idx": 7,
+      "speaker": "lena",
+      "beat": "B4",
+      "text": "Last year we did forty two million in revenue. Our top customer was about eighteen percent of that, and churn stayed under five percent."
+    },
+    {
+      "idx": 8,
+      "speaker": "lena",
+      "beat": "B5",
+      "text": "For the diligence escrow, the bank account number is 8 8 4 7, 2 2 0 1 9 3, 0 4."
+    },
+    {
+      "idx": 9,
+      "speaker": "lena",
+      "beat": "B5",
+      "text": "And for the expense reconciliation, the corporate card number is 4 0 1 2, 8 8 8 8, 3 3 2 0, 7 7 4 1."
+    },
+    {
+      "idx": 10,
+      "speaker": "raj",
+      "beat": "B6",
+      "text": "Let's model the retention packages. The lead engineer is on a base salary of one hundred ninety thousand, plus forty thousand in equity."
+    },
+    {
+      "idx": 11,
+      "speaker": "lena",
+      "beat": "B6",
+      "text": "Right, and the two senior engineers are each on a base of one hundred sixty thousand with a twenty thousand bonus."
+    },
+    {
+      "idx": 12,
+      "speaker": "tomas",
+      "beat": "B7",
+      "text": "On the contract assignment clauses, most agreements allow assignment on a change of control, but three of them require counterparty consent, which could complicate the transaction."
+    },
+    {
+      "idx": 13,
+      "speaker": "lena",
+      "beat": "B8",
+      "text": "I should flag something. On the X two hundred product line, we shipped a firmware build we knew had a safety defect, and we missed the required regulatory disclosure deadline."
+    },
+    {
+      "idx": 14,
+      "speaker": "raj",
+      "beat": "B9",
+      "text": "On a lighter note, did anyone watch that climbing documentary, Project Atlas, The Everest Ascent? It was fantastic."
+    },
+    {
+      "idx": 15,
+      "speaker": "raj",
+      "beat": "B9",
+      "text": "Also, if you need it, Cendara's main office line is 4 1 5, 5 5 5, 0 1 8 2."
+    },
+    {
+      "idx": 16,
+      "speaker": "maya",
+      "beat": "B10",
+      "text": "Let's talk scheduling and next steps. The board will also touch on our comp philosophy at the offsite next month."
+    },
+    {
+      "idx": 17,
+      "speaker": "maya",
+      "beat": "B11",
+      "text": "Great, I think that's everything. Let's reconvene next Thursday. Thanks everyone for your time."
+    }
   ]
 }
