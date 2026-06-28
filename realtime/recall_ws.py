@@ -39,8 +39,9 @@ NEST = os.environ.get("NEST_API_URL", "http://localhost:4000")
 # match on the whole (trimmed) message, so normal chatter never trips it.
 OPT_IN = {"+", "yes", "y", "ok", "👍", "1"}
 _VOCAB = VOCAB_TERMS
-_FLUSH_SECS = 4.0
+_FLUSH_SECS = 3.0
 _MIN_BYTES = 16000  # ~0.5s at 16 kHz/16-bit
+_MIN_RMS = 200.0  # int16 RMS floor; below this the chunk is ~silence, skip STT
 
 router = APIRouter()
 _model: WhisperModel | None = None
@@ -81,16 +82,32 @@ async def recall_ws(sock: WebSocket) -> None:
             None, lambda: WhisperModel("small.en", device="cpu", compute_type="int8"))
 
     def _transcribe(pcm: bytes) -> str:
-        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        segs, _ = _model.transcribe(audio, language="en", beam_size=5, initial_prompt=_VOCAB)
+        samples = np.frombuffer(pcm, dtype=np.int16)
+        if samples.size == 0 or float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) < _MIN_RMS:
+            return ""  # near-silence: skip STT so whisper can't invent words
+        audio = samples.astype(np.float32) / 32768.0
+        segs, _ = _model.transcribe(audio, language="en", beam_size=5, initial_prompt=_VOCAB,
+                                    condition_on_previous_text=False, vad_filter=True)
         return " ".join(s.text.strip() for s in segs).strip()
 
     async def govern(pid: str, pcm: bytes, email: str | None = None) -> None:
         if len(pcm) < _MIN_BYTES:
             return
         state["idx"] += 1
+        idx = state["idx"]
+        if meeting and token:
+            # Optimistic placeholder: tell the dashboard this utterance is being processed
+            # (in order, by idx) BEFORE the slow STT+LLM. The final decision upserts on idx.
+            pending = {"idx": idx, "speaker": pid, "action": "PENDING",
+                       "policyId": "", "confidence": 0, "shown": ""}
+            if email:
+                pending["email"] = email
+            try:
+                await http.post(f"{NEST}/meetings/{meeting}/lines", json=pending)
+            except Exception:
+                pass
         text = await loop.run_in_executor(None, _transcribe, pcm) if consent.has_consent(pid) else ""
-        decision, shown = agent.process(state["idx"], pid, text)
+        decision, shown = agent.process(idx, pid, text)
         show = shown if decision.action.value in ("COMMIT", "REDACT", "FLAG") else ""
         print(f"[recall] #{decision.idx} {pid} -> {decision.action.value} ({decision.policy_id}) {show[:70]}", flush=True)
         if meeting and token:

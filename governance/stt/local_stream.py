@@ -16,6 +16,7 @@ from .streaming_base import OnUtterance
 
 _VOCAB = VOCAB_WITH_NAMES
 _MIN_BYTES = 3200  # ~0.1s at 16 kHz/16-bit; ignore anything shorter
+_MIN_RMS = 200.0  # int16 RMS floor; below this the chunk is ~silence, skip STT
 
 
 class LocalStreamingSTT:
@@ -50,9 +51,13 @@ class LocalStreamingSTT:
             await self._cb(self._speaker, text)
 
     def _transcribe(self, pcm: bytes) -> str:
-        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        samples = np.frombuffer(pcm, dtype=np.int16)
+        if samples.size == 0 or float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) < _MIN_RMS:
+            return ""  # near-silence: skip STT so whisper can't invent words
+        audio = samples.astype(np.float32) / 32768.0
         segments, _ = self._model.transcribe(
-            audio, language="en", beam_size=5, initial_prompt=_VOCAB, vad_filter=False)
+            audio, language="en", beam_size=5, initial_prompt=_VOCAB,
+            condition_on_previous_text=False, vad_filter=True)
         return " ".join(s.text.strip() for s in segments)
 
     async def close(self) -> None:
