@@ -29,25 +29,31 @@ NEXT_PUBLIC_WS_URL=wss://engine.velocrux.com/ws
 ## TLS / ALB
 - ACM wildcard cert `*.velocrux.com` (DNS-validated).
 - ALB `governance-alb`: **`:443` HTTPS** listener (TLS13) → default forward **nest TG**, rule
-  `Host=engine.velocrux.com` → **engine TG**; **`:80`** redirects to 443. (Old `:8080` removed.)
+  `Host=engine.velocrux.com` → **engine TG**; **`:80`** redirects to 443.
 - ALB SG allows inbound 80 + 443.
+
+## Secrets — AWS Secrets Manager
+`DEEPGRAM_API_KEY`, `RECALL_API_KEY`, `MONGO_URI`, `JWT_SECRET` live in **Secrets Manager**
+(`governance-engine-secrets`, `governance-nest-secrets`) and are referenced via the task def
+`secrets` block (`valueFrom`); the execution role has `secretsmanager:GetSecretValue` scoped to
+just those two ARNs. Non-secret config (model id, region, URLs) stays as plain env. **No secrets
+are stored in the task definitions or the image.** The engine calls Bedrock via an IAM **task
+role** (`bedrock:InvokeModel`) — no static AWS keys at all.
+
+Rotate a secret: `aws secretsmanager put-secret-value --secret-id governance-<svc>-secrets
+--secret-string file://new.json` then `aws ecs update-service … --force-new-deployment`.
 
 ## What was created (us-east-1)
 - **ECR:** `governance-engine`, `governance-nest` (arm64)
 - **ECS:** cluster `governance-cluster`; services `governance-engine-svc` (1 vCPU/2 GB),
   `governance-nest-svc` (0.25 vCPU/0.5 GB); task defs `governance-engine`, `governance-nest`
-- **IAM:** `ecsTaskExecutionRole`; `governance-engine-task-role` (inline `bedrock:InvokeModel` —
-  the engine calls Bedrock via this role, **no static AWS keys in the container**)
+- **IAM:** `ecsTaskExecutionRole` (+ inline secrets read); `governance-engine-task-role`
+  (`bedrock:InvokeModel`)
+- **Secrets Manager:** `governance-engine-secrets`, `governance-nest-secrets`
 - **SGs:** `governance-alb-sg` (80/443), `governance-task-sg` (4000/8000 from ALB)
 - **Logs:** `/ecs/governance-engine`, `/ecs/governance-nest`
-- Tasks: default-VPC public subnets + public IP (no NAT)
-- Service env (set on the task definitions): engine `PUBLIC_BASE_URL=https://engine.velocrux.com`,
-  `NEST_API_URL=https://api.velocrux.com`, Deepgram/Recall keys, model id; nest `MONGO_URI`,
-  `JWT_SECRET`, `PYTHON_ENGINE_URL=https://engine.velocrux.com`. MongoDB Atlas Network Access
-  must allow the Fargate egress (set to `0.0.0.0/0`).
-
-Env is inline in the task definitions. Hardening follow-up: move secrets to AWS Secrets Manager
-and reference via the task def `secrets` block.
+- Tasks: default-VPC public subnets + public IP (no NAT). MongoDB Atlas Network Access must allow
+  the Fargate egress (set to `0.0.0.0/0`).
 
 ## Redeploy after a code change
 ```bash
@@ -57,9 +63,9 @@ docker push $REGISTRY/governance-engine:latest
 aws ecs update-service --region $REGION --cluster $CLUSTER \
   --service governance-engine-svc --force-new-deployment
 ```
-(Nest is the same with `governance-nest` / `nest-api`.) Env changed? Re-register the task def with
-the new env and `update-service --task-definition governance-<svc>`.
+(Nest is the same with `governance-nest` / `nest-api`.) Env changed? Re-register the task def and
+`update-service --task-definition governance-<svc>`.
 
 ## Rough cost
-~1 ALB (~$16/mo) + 2 Fargate tasks (~$45–55/mo) + ECR + egress ≈ **~$65–80/mo** running.
-`aws ecs update-service --desired-count 0` on both services pauses compute when idle.
+~1 ALB (~$16/mo) + 2 Fargate tasks (~$45–55/mo) + ECR + Secrets Manager ($0.80/mo) + egress ≈
+**~$65–80/mo** running. `aws ecs update-service --desired-count 0` on both services pauses compute.
